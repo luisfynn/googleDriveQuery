@@ -26,51 +26,67 @@ except Exception as e:
     st.error("시스템 설정 중입니다. 잠시 후 다시 시도해주세요.")
     st.stop()
 
-# 3. 검색창 및 결과 출력
-query = st.chat_input("검색할 품목명을 입력하세요 (예: 2026년_강판)")
+# 3. 직관적인 2단계 검색 UI
+st.subheader("🔍 상세 단가 검색")
+col1, col2 = st.columns(2)
+search_file = col1.text_input("📁 업체/파일명 (예: 선진)")
+search_item = col2.text_input("📦 찾을 품목 (예: pa 화이트)")
 
-if query:
-    with st.spinner("데이터베이스를 스캔 중입니다..."):
-        
-        # 💡 보안 금고(Secrets)에서 폴더 ID를 안전하게 불러옵니다.
-        FOLDER_ID = st.secrets["drive_folder_id"]
-        
-        # 드라이브에서 특정 폴더 내 파일 검색
-        results = service.files().list(
-            q=f"'{FOLDER_ID}' in parents and name contains '{query}' and trashed = false",
-            fields="files(id, name)"
-        ).execute()
-        items = results.get('files', [])
+if st.button("데이터 검색하기"):
+    if not search_file or not search_item:
+        st.warning("업체명과 품목명을 모두 입력해 주세요.")
+    else:
+        with st.spinner(f"'{search_file}' 관련 파일에서 '{search_item}' 단가를 찾는 중입니다..."):
+            
+            FOLDER_ID = st.secrets["drive_folder_id"]
+            
+            # 1. 파일 이름에 '선진'이 들어간 모든 파일 검색
+            results = service.files().list(
+                q=f"'{FOLDER_ID}' in parents and name contains '{search_file}' and trashed = false",
+                fields="files(id, name)"
+            ).execute()
+            items = results.get('files', [])
 
-        if not items:
-            st.warning("일치하는 데이터가 없습니다. 다른 검색어를 입력해보세요.")
-        else:
-            try:
-                # 파일 다운로드 (메모리에서 처리하여 서버에 흔적을 남기지 않음)
-                file_id = items[0]['id']
-                request = service.files().get_media(fileId=file_id)
-                file_io = io.BytesIO()
-                downloader = MediaIoBaseDownload(file_io, request)
+            if not items:
+                st.error(f"'{search_file}'(이)가 포함된 엑셀 파일이 드라이브에 없습니다.")
+            else:
+                found_data = False
                 
-                done = False
-                while done is False:
-                    status, done = downloader.next_chunk()
-                
-                file_io.seek(0)
-                
-                # xlsm 엑셀 파일 읽기 (실제 시트명으로 변경 필요할 수 있음)
-                df = pd.read_excel(file_io, engine='openpyxl', sheet_name='Sheet1')
-                
-                year_col = df.columns[0]
-                price_col = df.columns[1]
-                current_price = df[price_col].iloc[-1]
-                
-                # 결과 출력
-                st.success(f"✅ '{items[0]['name']}' 분석 완료")
-                st.metric(label="최근 단가", value=f"{current_price:,.0f}원")
-                
-                fig = px.line(df, x=year_col, y=price_col, title="최근 가격 추이")
-                st.plotly_chart(fig, use_container_width=True)
-                
-            except Exception as e:
-                st.error("데이터를 불러오는 데 실패했습니다.")
+                # 2. 찾은 파일들을 하나씩 열어서 내부 데이터 뒤지기
+                for file_info in items:
+                    try:
+                        # 파일 다운로드 (메모리 로드)
+                        file_id = file_info['id']
+                        request = service.files().get_media(fileId=file_id)
+                        file_io = io.BytesIO()
+                        downloader = MediaIoBaseDownload(file_io, request)
+                        
+                        done = False
+                        while done is False:
+                            status, done = downloader.next_chunk()
+                        file_io.seek(0)
+                        
+                        # 엑셀 파일 읽기
+                        df = pd.read_excel(file_io, engine='openpyxl')
+                        
+                        # 3. 엑셀 내부의 모든 셀을 대상으로 품목명('pa 화이트') 검색
+                        # 모든 데이터를 문자열로 변환 후 대소문자 무시하고 검색
+                        mask = df.astype(str).apply(lambda x: x.str.contains(search_item, case=False, na=False))
+                        matching_rows = df[mask.any(axis=1)]
+                        
+                        # 검색 결과가 있다면 화면에 출력
+                        if not matching_rows.empty:
+                            found_data = True
+                            st.success(f"✅ 문서 발견: **{file_info['name']}**")
+                            
+                            # 💡 엑셀에서 찾은 해당 행(Row)의 데이터를 통째로 표로 보여줍니다.
+                            st.dataframe(matching_rows, use_container_width=True)
+                            
+                            # (주의) 여기서 그래프를 그리려면 엑셀의 몇 번째 열이 '날짜'이고 
+                            # 몇 번째 열이 '가격'인지 코드가 정확히 알아야 합니다.
+                            
+                    except Exception as e:
+                        pass # 읽기 실패한 파일은 건너뜀
+                        
+                if not found_data:
+                    st.warning(f"파일은 찾았지만, 문서 안에 '{search_item}' 데이터가 없습니다.")
