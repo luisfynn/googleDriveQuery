@@ -31,10 +31,11 @@ query = st.chat_input("검색할 품목명을 입력하세요 (예: 2026년_강�
 
 if query:
     with st.spinner("데이터베이스를 스캔 중입니다..."):
-        # 드라이브에서 파일 검색
-		FOLDER_ID = st.secrets["drive_folder_id"]
-		
-		# 드라이브에서 특정 폴더 내 파일만 검색
+        
+        # 💡 보안 금고(Secrets)에서 폴더 ID를 안전하게 불러옵니다.
+        FOLDER_ID = st.secrets["drive_folder_id"]
+        
+        # 드라이브에서 특정 폴더 내 파일 검색
         results = service.files().list(
             q=f"'{FOLDER_ID}' in parents and name contains '{query}' and trashed = false",
             fields="files(id, name)"
