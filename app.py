@@ -8,7 +8,7 @@ from google.oauth2 import service_account
 
 # 1. UI 설정
 st.set_page_config(page_title="단가 검색기", layout="centered")
-st.title("📊 5년 트렌드 단가 검색기")
+st.title("📊단가 검색기")
 st.caption("누구나 쉽게 원자재/품목의 최근 5년 가격 추이를 확인하세요.")
 
 # 2. 구글 인증 (보안 금고인 st.secrets에서 키를 가져옴)
@@ -45,7 +45,7 @@ if st.button("데이터 검색하기"):
                 # FOLDER_ID 조건을 빼서 하위 폴더까지 재귀적으로 싹 다 뒤지게 만듦
                 # 폴더 자체가 엑셀로 인식되는 것을 막기 위해 mimeType 조건 추가
                 q=f"name contains '{search_file}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
-                fields="files(id, name)",
+                fields="files(id, name, parents)",
                 pageSize=1000,                  # 한 번에 최대 검색량을 100개(기본값)에서 1000개로 늘림
                 supportsAllDrives=True,         # 공유(팀) 드라이브 지원
                 includeItemsFromAllDrives=True  # 모든 드라이브 항목 포함
@@ -56,10 +56,30 @@ if st.button("데이터 검색하기"):
                 st.error(f"'{search_file}'(이)가 포함된 엑셀 파일이 드라이브에 없습니다.")
             else:
                 found_data = False
+                folder_cache = {}  # 💡 중복 API 호출을 막기 위한 폴더 이름 저장소
                 
                 # 2. 찾은 파일들을 하나씩 열어서 내부 데이터 뒤지기
                 for file_info in items:
                     try:
+                        # 💡 폴더 이름 알아내기
+                        parent_id = file_info.get('parents', [''])[0]
+                        folder_name = "알 수 없는 경로"
+                        
+                        if parent_id:
+                            if parent_id not in folder_cache:
+                                try:
+                                    # 폴더 ID로 폴더 이름 한 번 더 검색
+                                    folder_meta = service.files().get(
+                                        fileId=parent_id, 
+                                        fields="name", 
+                                        supportsAllDrives=True
+                                    ).execute()
+                                    folder_cache[parent_id] = folder_meta.get('name', '알 수 없는 경로')
+                                except Exception:
+                                    folder_cache[parent_id] = "알 수 없는 경로"
+                            
+                            folder_name = folder_cache[parent_id]
+
                         # 파일 다운로드 (메모리 로드)
                         file_id = file_info['id']
                         request = service.files().get_media(fileId=file_id)
@@ -74,21 +94,17 @@ if st.button("데이터 검색하기"):
                         # 엑셀 파일 읽기
                         df = pd.read_excel(file_io, engine='openpyxl')
                         
-                        # 3. 엑셀 내부의 모든 셀을 대상으로 품목명('pa 화이트') 검색
-                        # 모든 데이터를 문자열로 변환 후 대소문자 무시하고 검색
+                        # 3. 엑셀 내부의 모든 셀을 대상으로 품목명 검색
                         mask = df.astype(str).apply(lambda x: x.str.contains(search_item, case=False, na=False))
                         matching_rows = df[mask.any(axis=1)]
                         
                         # 검색 결과가 있다면 화면에 출력
                         if not matching_rows.empty:
                             found_data = True
-                            st.success(f"✅ 문서 발견: **{file_info['name']}**")
                             
-                            # 💡 엑셀에서 찾은 해당 행(Row)의 데이터를 통째로 표로 보여줍니다.
+                            # 💡 폴더 위치까지 포함하여 직관적으로 출력
+                            st.success(f"✅ 문서 발견: **{file_info['name']}** (위치: 📁 {folder_name})")
                             st.dataframe(matching_rows, use_container_width=True)
-                            
-                            # (주의) 여기서 그래프를 그리려면 엑셀의 몇 번째 열이 '날짜'이고 
-                            # 몇 번째 열이 '가격'인지 코드가 정확히 알아야 합니다.
                             
                     except Exception as e:
                         pass # 읽기 실패한 파일은 건너뜀
