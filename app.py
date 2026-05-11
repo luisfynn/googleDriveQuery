@@ -42,8 +42,13 @@ if st.button("데이터 검색하기"):
             
             # 1. 파일 이름에 '선진'이 들어간 모든 파일 검색
             results = service.files().list(
-                q=f"'{FOLDER_ID}' in parents and name contains '{search_file}' and trashed = false",
-                fields="files(id, name)"
+                # FOLDER_ID 조건을 빼서 하위 폴더까지 재귀적으로 싹 다 뒤지게 만듦
+                # 폴더 자체가 엑셀로 인식되는 것을 막기 위해 mimeType 조건 추가
+                q=f"name contains '{search_file}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+                fields="files(id, name)",
+                pageSize=1000,                  # 한 번에 최대 검색량을 100개(기본값)에서 1000개로 늘림
+                supportsAllDrives=True,         # 공유(팀) 드라이브 지원
+                includeItemsFromAllDrives=True  # 모든 드라이브 항목 포함
             ).execute()
             items = results.get('files', [])
 
