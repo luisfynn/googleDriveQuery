@@ -1,44 +1,59 @@
-# 📊 Drive Price Scanner
+# 📊 Price Lens — 단가 검색기
 
-A mobile-friendly web application that quickly searches for specific vendor and item prices across numerous Excel files stored in Google Drive.
+Google Drive에 흩어진 단가 엑셀 파일을 한 번에 검색하는 사내 웹 도구.
 
 ## 🌟 Features
 
-* **No-Database Architecture:** Utilizes Google Drive as its own database, resulting in zero maintenance costs.
-* **Deep Search:** Flawlessly scans through subfolders and Shared Drives (Team Drives).
-* **In-Memory Processing:** Enhances security by directly analyzing Excel files (`openpyxl`) in memory without downloading them to the server.
-* **Mobile Ready:** Built with Streamlit, it is ready for immediate use on smartphones (Adding it to the Home Screen is highly recommended).
+- **검색**: 업체명/파일명 + 품목명 두 단어로 전체 Drive 재귀 탐색 (공유 드라이브 포함)
+- **DB 불필요**: Google Drive 자체를 데이터 소스로 사용, 별도 DB·동기화 작업 없음
+- **In-Memory**: 파일을 디스크에 저장하지 않고 메모리에서 파싱 후 즉시 폐기
 
-## 📋 Prerequisites
+## 🛠 기술 스택
 
-To run this app, a Google Cloud Service Account is required.
+- Next.js 16 (App Router) + TypeScript
+- Tailwind CSS v4
+- googleapis (Drive API)
+- xlsx (SheetJS)
+- 배포: GCP Cloud Run (asia-northeast3)
 
-1. Enable the Google Drive API in the Google Cloud Console.
-2. Create a Service Account and download the JSON key.
-3. In the sharing settings of the Google Drive folder you wish to search, add the Service Account email and grant it **'Viewer'** access.
+## 🚀 로컬 실행
 
-## 🚀 Deployment (Streamlit Cloud)
+```powershell
+npm install
+cp .env.example .env
+# .env 에 GCP_PROJECT_ID 채우기
 
-You can deploy this application for free on [Streamlit Community Cloud](https://share.streamlit.io/) without needing a dedicated server or Docker.
+# 인증 방법 둘 중 하나:
+# (A) credentials.json 사용
+#     .env에 GOOGLE_APPLICATION_CREDENTIALS=./credentials.json 추가
+# (B) gcloud ADC 사용
+gcloud auth application-default login
 
-1. Fork this repository or copy it to your GitHub account.
-2. Log in to Streamlit Cloud, click `New app`, and connect your repository.
-3. **Important:** Before deploying, go to `Advanced settings` -> `Secrets` and input your authentication credentials in TOML format as shown below:
+npm run dev
+# http://localhost:3000
+```
 
-```toml
-drive_folder_id = "YOUR_GOOGLE_DRIVE_ROOT_FOLDER_ID"
+## ☁ 배포
 
-[gcp_service_account]
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-private-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-client_email = "your-email@...gserviceaccount.com"
-client_id = "..."
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "..."
-universe_domain = "googleapis.com"
+자세한 배포 가이드는 `NOTION_DEPLOYMENT.md` 참조. 요약:
 
+```powershell
+.\deploy.ps1
+```
+
+## 📁 폴더 구조
+
+```
+GoogleQuery/
+├── app/
+│   ├── api/search/route.ts   # Drive 검색 API
+│   ├── lib/drive.ts          # 검색 핵심 로직
+│   ├── globals.css           # 디자인 시스템
+│   ├── layout.tsx            # 루트 레이아웃
+│   └── page.tsx              # 메인 UI
+├── Dockerfile                # Cloud Run 컨테이너
+├── cloudbuild.yaml           # Cloud Build 설정
+├── deploy.ps1                # 배포 스크립트
+├── .env.example              # 환경변수 템플릿
+└── package.json
 ```

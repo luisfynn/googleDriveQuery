@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.local
+credentials.json
+*.md
+Dockerfile
+.dockerignore
+deploy.ps1
+cloudbuild.yaml
+.vscode
+.idea
+.DS_Store
